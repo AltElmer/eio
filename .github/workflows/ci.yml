@@ -49,6 +49,11 @@ jobs:
             os: windows-2022
             fortran: true
             mingw: true
+          # Native arm64 Windows. No Fortran, like the x86_64 MSVC job, so
+          # this exercises the degraded build on a second architecture.
+          - name: windows-arm64 (msvc, no fortran)
+            os: windows-11-arm
+            fortran: false
 
     steps:
       - uses: actions/checkout@v4

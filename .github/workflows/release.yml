@@ -44,6 +44,12 @@ jobs:
           - target: windows-x86_64-msvc
             os: windows-2022
             fortran: false
+          # Native arm64 Windows, on an arm64 runner with the arm64 MSVC.
+          # No Fortran, for the same reason as the x86_64 MSVC target: the
+          # toolchain does not ship one, so this archive carries eioc only.
+          - target: windows-arm64-msvc
+            os: windows-11-arm
+            fortran: false
           - target: windows-x86_64-mingw
             os: windows-2022
             fortran: true
