@@ -30,6 +30,7 @@ jobs:
           - name: linux-x86_64 (clang + gfortran)
             os: ubuntu-24.04
             fortran: true
+            apt-clang: true
             cmake-extra: -DCMAKE_CXX_COMPILER=clang++
           - name: macos-arm64 (clang + gfortran)
             os: macos-14
@@ -63,8 +64,13 @@ jobs:
           sudo apt-get install -y gfortran
           echo "FC=$(command -v gfortran)" >> "$GITHUB_ENV"
 
+      # Gated on a matrix flag rather than on the display name. The first
+      # version of this tested contains(matrix.name, 'clang'), which is also
+      # true of the macOS jobs and of clang-cl on Windows, so all three ran
+      # apt-get. A condition that reads a human-readable label is deciding
+      # behaviour from a string nobody promised to keep stable.
       - name: set up clang (linux)
-        if: contains(matrix.name, 'clang')
+        if: matrix.apt-clang
         run: sudo apt-get install -y clang
 
       - name: set up gfortran (macos)
