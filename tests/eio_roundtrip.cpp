@@ -153,6 +153,29 @@ int main(int argc, char** argv)
   delete[] tags;
   delete[] coord;
 
+  /* Element connectivity, read through the declaration in eio_api.h.
+
+     This is here because the header and the C binding disagreed about this
+     one function's argument list for twelve years, and no test called it. A
+     wrong declaration is a link error, so calling it at all is most of the
+     check; asserting the nodes that come back is the rest. */
+  {
+    int rTag = -1, rBody = -1, rType = -1;
+    int pdofs[16] = { 0 };
+    int rNodes[32] = { 0 };
+    eio_get_mesh_element_conns(rTag, rBody, rType, pdofs, rNodes, info);
+    check_info(info, "eio_get_mesh_element_conns");
+    check(rType == 404, "element type " + std::to_string(rType) + " == 404");
+    check(rBody == 1, "element body " + std::to_string(rBody) + " == 1");
+    bool conns_ok = true;
+    for (int i = 0; i < 4; ++i)
+      if (rNodes[i] != i + 1) conns_ok = false;
+    check(conns_ok, "element connectivity survives the round trip");
+    if (!conns_ok)
+      std::cout << "       got " << rNodes[0] << " " << rNodes[1] << " "
+                << rNodes[2] << " " << rNodes[3] << ", expected 1 2 3 4\n";
+  }
+
   eio_close_mesh(info);
   eio_close_model(info);
   eio_close(info);

@@ -131,13 +131,25 @@ void eio_get_mesh_description (IREF nodeCount, IREF elementCount,
 				IREF usedElementTypes, int* elementTypeTags,
 				int *elementCountByType, 
 				IREF info);
-  /* Header different from actual implementation
-     void eio_get_mesh_element_conns (IREF tag, IREF body, IREF type, 
-     int *pdofs, int *nodes, IREF info); 
-  */
-void eio_get_mesh_element_conns
-  (IREF tag, IREF part, IREF body, IREF type, int *pdofs, int *nodes,
-   IREF info);
+/* Note the argument list, which differs between the two bindings.
+
+   The C binding in eio_api_c.cpp takes six arguments and does not expose the
+   partition: it declares "part" locally, passes it to the agent and discards
+   it. The Fortran binding in eio_api_f.cpp takes seven and passes the
+   partition back to the caller. An element tag in mesh.elements may be written
+   "tag/part", and only the Fortran side lets a caller see the second half.
+
+   This header declares the C binding, so it is the six argument form.
+
+   It said otherwise between 2014 and now. 3a5b171ee, "Corrected EIO mesh
+   reading.", updated the Fortran binding and changed this declaration to match
+   it, leaving the header describing a function that the C library does not
+   define, and dropping the terminating semicolon in the same edit. Nothing
+   noticed, because nothing includes this header: eio's own sources include the
+   individual agent headers instead. What found it was ElmerFront, whose call
+   site has always used the six argument form and was correct all along.  */
+void eio_get_mesh_element_conns (IREF tag, IREF body, IREF type,
+                                 int *pdofs, int *nodes, IREF info);
 
 void eio_get_mesh_element_coords (IREF tag, IREF body, IREF type, 
 					int *nodes, 
