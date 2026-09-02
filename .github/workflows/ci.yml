@@ -1,0 +1,197 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Three operating systems, two CPU architectures, four compilers.
+          # MSVC has no Fortran, which is the case eiof is allowed to be
+          # absent for, so it is here deliberately rather than by omission.
+          - name: linux-x86_64 (gcc + gfortran)
+            os: ubuntu-24.04
+            fortran: true
+          - name: linux-arm64 (gcc + gfortran)
+            os: ubuntu-24.04-arm
+            fortran: true
+          - name: linux-x86_64 (clang + gfortran)
+            os: ubuntu-24.04
+            fortran: true
+            cmake-extra: -DCMAKE_CXX_COMPILER=clang++
+          - name: macos-arm64 (clang + gfortran)
+            os: macos-14
+            fortran: true
+          - name: macos-x86_64 (clang + gfortran)
+            os: macos-15-intel
+            fortran: true
+          - name: windows-x86_64 (msvc, no fortran)
+            os: windows-2022
+            fortran: false
+          - name: windows-x86_64 (clang-cl, no fortran)
+            os: windows-2022
+            fortran: false
+            cmake-extra: -T ClangCL
+          - name: windows-x86_64 (mingw + gfortran)
+            os: windows-2022
+            fortran: true
+            mingw: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # gfortran is not guaranteed to be present, or to be called "gfortran",
+      # on the hosted images. Installing it explicitly and pinning FC keeps
+      # the matrix from silently degrading to a C++ only build on a job that
+      # is supposed to be testing the Fortran binding.
+      - name: set up gfortran (linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran
+          echo "FC=$(command -v gfortran)" >> "$GITHUB_ENV"
+
+      - name: set up clang (linux)
+        if: contains(matrix.name, 'clang')
+        run: sudo apt-get install -y clang
+
+      - name: set up gfortran (macos)
+        if: runner.os == 'macOS'
+        run: |
+          fc=$(command -v gfortran || true)
+          if [ -z "$fc" ]; then
+            fc=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -1 || true)
+          fi
+          if [ -z "$fc" ]; then
+            brew install gcc
+            fc=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -1)
+          fi
+          echo "found gfortran at $fc"
+          echo "FC=$fc" >> "$GITHUB_ENV"
+
+      - name: set up mingw
+        if: matrix.mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: build and test
+        if: '!matrix.mingw'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake-extra }}
+          cmake --build build --config Release
+          ctest --test-dir build -C Release --output-on-failure
+
+      - name: build and test (mingw)
+        if: matrix.mingw
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+      # The Fortran binding is allowed to be skipped where no Fortran compiler
+      # exists, which means a job could pass having quietly built half the
+      # library. Assert which targets were actually produced, per job, so that
+      # a silently degraded build fails instead of going green.
+      - name: check the expected libraries were built
+        shell: bash
+        run: |
+          set -e
+          shopt -s nullglob
+          found_c=$(find build -name 'libeioc.*' -o -name 'eioc.lib' | head -1)
+          found_f=$(find build -name 'libeiof.*' -o -name 'eiof.lib' | head -1)
+          echo "eioc: ${found_c:-MISSING}"
+          echo "eiof: ${found_f:-MISSING}"
+          if [ -z "$found_c" ]; then
+            echo "::error::eioc was not built"; exit 1
+          fi
+          if [ "${{ matrix.fortran }}" = "true" ] && [ -z "$found_f" ]; then
+            echo "::error::this job has a Fortran compiler but eiof was not built"; exit 1
+          fi
+          if [ "${{ matrix.fortran }}" != "true" ] && [ -n "$found_f" ]; then
+            echo "::error::eiof was built on a job expected to have no Fortran compiler"; exit 1
+          fi
+
+      # Same reasoning for the tests: the Fortran test is registered only when
+      # eiof is built, so counting them is how a skipped test is told apart
+      # from a passing one.
+      - name: check the expected tests ran
+        shell: bash
+        run: |
+          set -e
+          cfg=""
+          if [ "${{ runner.os }}" = "Windows" ] && [ "${{ matrix.mingw }}" != "true" ]; then
+            cfg="-C Release"
+          fi
+          n=$(ctest --test-dir build $cfg -N | grep -c 'Test *#' || true)
+          echo "tests registered: $n"
+          expected=1
+          if [ "${{ matrix.fortran }}" = "true" ]; then expected=2; fi
+          if [ "$n" != "$expected" ]; then
+            echo "::error::expected $expected tests, found $n"; exit 1
+          fi
+
+  # A library nobody can consume is not much of a library. Build it the way
+  # Elmer would: as a subdirectory of another project.
+  as-subdirectory:
+    name: consumed via add_subdirectory
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: eio
+
+      - name: set up gfortran
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran
+
+      - name: make a parent project that adds eio as a subdirectory
+        run: |
+          cat > CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.12)
+          project(parent LANGUAGES CXX Fortran)
+          set(CMAKE_CXX_STANDARD 11)
+          add_subdirectory(eio)
+          add_executable(consumer consumer.cpp)
+          target_link_libraries(consumer PRIVATE eioc)
+          EOF
+          cat > consumer.cpp <<'EOF'
+          #include "eio_api.h"
+          int main() { int info = -1; eio_init(info); eio_close(info); return info; }
+          EOF
+
+      - name: configure, build, run
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          ./build/consumer
+          echo "consumer linked against eioc and ran"
+
+      # The point of the standalone block in eio's CMakeLists is that it does
+      # nothing when eio is a subdirectory. Prove it: the parent must not have
+      # acquired eio's tests.
+      - name: eio must not add its tests to the parent project
+        run: |
+          if [ -d build/eio/tests ]; then
+            echo "::error::eio built its tests inside a parent project"; exit 1
+          fi
+          echo "ok: eio added no tests to the parent"

@@ -1,0 +1,163 @@
+name: release
+
+# Builds eio for each supported platform and attaches the archives to the
+# release for the tag that triggered it.
+#
+# eio is a library, not a program, so a release is headers plus the static
+# libraries for one platform and architecture. There is no single artifact
+# that works everywhere: this is native code, and the Fortran module in
+# particular is compiler specific, so each archive names the compiler it was
+# built with as well as the platform.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and attach to
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64-gcc
+            os: ubuntu-24.04
+            fortran: true
+          - target: linux-arm64-gcc
+            os: ubuntu-24.04-arm
+            fortran: true
+          - target: macos-arm64-clang
+            os: macos-14
+            fortran: true
+          - target: macos-x86_64-clang
+            os: macos-15-intel
+            fortran: true
+          - target: windows-x86_64-msvc
+            os: windows-2022
+            fortran: false
+          - target: windows-x86_64-mingw
+            os: windows-2022
+            fortran: true
+            mingw: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up gfortran (linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran
+          echo "FC=$(command -v gfortran)" >> "$GITHUB_ENV"
+
+      - name: set up gfortran (macos)
+        if: runner.os == 'macOS'
+        run: |
+          fc=$(command -v gfortran || true)
+          if [ -z "$fc" ]; then
+            fc=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -1 || true)
+          fi
+          if [ -z "$fc" ]; then
+            brew install gcc
+            fc=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -1)
+          fi
+          echo "FC=$fc" >> "$GITHUB_ENV"
+
+      - name: set up mingw
+        if: matrix.mingw
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-gcc-fortran
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: build and test
+        if: '!matrix.mingw'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+          ctest --test-dir build -C Release --output-on-failure
+
+      - name: build and test (mingw)
+        if: matrix.mingw
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+
+      - name: package
+        shell: bash
+        run: |
+          set -e
+          d="dist/eio-${{ matrix.target }}"
+          mkdir -p "$d/lib" "$d/include"
+
+          # Copy the libraries by searching for them rather than assuming a
+          # layout: MSVC puts them under Release/, single-config generators do
+          # not, and a wrong guess would produce an empty archive that still
+          # uploads successfully.
+          find build -name 'libeioc.*' -o -name 'eioc.lib' | while read -r f; do cp "$f" "$d/lib/"; done
+          find build -name 'libeiof.*' -o -name 'eiof.lib' | while read -r f; do cp "$f" "$d/lib/"; done
+          find build -name 'eiofortranapi.mod' -o -name 'EIOFortranAPI.mod' | while read -r f; do cp "$f" "$d/include/"; done
+
+          cp include/*.h "$d/include/"
+          cp build/eio_build_config.h "$d/include/"
+          cp README.md LGPL-2.1 GPL-2 "$d/"
+
+          # An archive missing the library it exists to ship is worse than a
+          # failed build, because it looks like a release.
+          if ! ls "$d/lib/"*eioc* >/dev/null 2>&1; then
+            echo "::error::no eioc library in the archive"; exit 1
+          fi
+          if [ "${{ matrix.fortran }}" = "true" ] && ! ls "$d/lib/"*eiof* >/dev/null 2>&1; then
+            echo "::error::no eiof library in the archive on a Fortran capable target"; exit 1
+          fi
+          if [ "${{ matrix.fortran }}" = "true" ] && ! ls "$d/include/"*.mod >/dev/null 2>&1; then
+            echo "::error::no Fortran module in the archive on a Fortran capable target"; exit 1
+          fi
+          ls -lR "$d"
+
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "eio-${{ matrix.target }}.zip" "eio-${{ matrix.target }}"
+          else
+            tar czf "eio-${{ matrix.target }}.tar.gz" "eio-${{ matrix.target }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eio-${{ matrix.target }}
+          path: dist/eio-*.*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: list what will be published
+        run: ls -lR dist
+
+      - name: attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: dist/**/eio-*.*

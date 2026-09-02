@@ -25,7 +25,7 @@ Author(s):  Harri Hakula 10.03.98
 #ifndef EIOAPI_H
 #define EIOAPI_H
 
-#include "../config.h"
+#include "eio_build_config.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -136,8 +136,8 @@ void eio_get_mesh_description (IREF nodeCount, IREF elementCount,
      int *pdofs, int *nodes, IREF info); 
   */
 void eio_get_mesh_element_conns
-  (IREF tag, IREF part, IREF body, IREF type, int *pdofs, int *nodes, 
-   IREF info)
+  (IREF tag, IREF part, IREF body, IREF type, int *pdofs, int *nodes,
+   IREF info);
 
 void eio_get_mesh_element_coords (IREF tag, IREF body, IREF type, 
 					int *nodes, 

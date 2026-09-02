@@ -5,7 +5,7 @@
 #define CDECL 
 #endif
 
-#include "../config.h"
+#include "eio_build_config.h"
 
 #ifndef AIX
 #ifndef PATH_MAX

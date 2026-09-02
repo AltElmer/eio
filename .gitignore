@@ -1,0 +1,10 @@
+build/
+build-*/
+probe-out/
+config.h
+*.o
+*.obj
+*.a
+*.lib
+*.mod
+*.exe

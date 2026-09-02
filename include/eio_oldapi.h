@@ -25,7 +25,7 @@ Author(s):  Harri Hakula 10.03.98
 #ifndef EIOAPI_H
 #define EIOAPI_H
 
-#include "../config.h"
+#include "eio_build_config.h"
 
 #ifdef __cplusplus
 extern "C"

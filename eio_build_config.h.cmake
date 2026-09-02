@@ -10,6 +10,8 @@
 /* #cmakedefine FC_FUNC_ ${FC_FUNC_} */
 /* #cmakedefine FC_CHAR_PTR${FC_CHAR_PTR} */
 
+#cmakedefine USE_ISO_C_BINDINGS
+
 #ifdef USE_ISO_C_BINDINGS
 #define FC_FUNC(name, NAME) name
 #define FC_FUNC_(name, NAME) name

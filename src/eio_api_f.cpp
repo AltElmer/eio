@@ -32,7 +32,7 @@ Author(s):  Harri Hakula 10.03.98
 #include "EIODualMeshAgent.h"
 #include "EIOPartWriter.h"
 
-#include "../config.h"
+#include "eio_build_config.h"
 
 struct parallel
 {
