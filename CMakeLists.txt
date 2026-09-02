@@ -11,9 +11,11 @@ ELSE()
 ENDIF()
 
 IF(EIO_STANDALONE)
-  # 5.4.0 is the version eio carried in Elmer's release notes, the last time it
-  # was released under a version number of its own.
-  PROJECT(EIO VERSION 5.4.0 LANGUAGES CXX)
+  # eio had a version line of its own that stopped at 5.4.0, shipped with
+  # Elmer 5.4 and recorded in that release's notes. This continues it rather
+  # than restarting at 1.0.0 and pretending the previous twenty years did not
+  # happen.
+  PROJECT(EIO VERSION 5.5.0 LANGUAGES CXX)
 
   SET(CMAKE_CXX_STANDARD 11)
   SET(CMAKE_CXX_STANDARD_REQUIRED ON)

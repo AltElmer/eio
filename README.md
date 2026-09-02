@@ -46,6 +46,8 @@ Two libraries are produced:
 
 `eiof` is skipped, with a message, when no Fortran compiler is found, which is the normal case under MSVC. That is a degraded build, not a broken one, and CI asserts which targets each job produced so a job cannot go green having quietly built half the library.
 
+Versions continue eio's own line rather than restarting at 1.0.0. It stopped at **5.4.0**, shipped with Elmer 5.4 and recorded in that release's notes; the first release here is **5.5.0**.
+
 Binaries for each platform and compiler are on the [releases page](https://github.com/AltElmer/eio/releases). There is no single artifact that works everywhere: this is native code, and a Fortran `.mod` file is specific to the compiler that produced it, so each archive names its compiler as well as its platform.
 
 ## Tests
